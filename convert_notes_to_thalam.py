@@ -236,19 +236,21 @@ LINE_COLORS = ["#cce8ff", "#ccf0d8"]  # light blue, light green
 def write_html(words, n, mathras_per_beat, output_path):
     # words is a list of (word, line_num) pairs
     rows = [words[i : i + n] for i in range(0, len(words), n)]
-    total_cols = n + 1  # n word columns + 1 marker column
+    total_cols = n + 2  # n word columns + 1 marker column + 1 count column
 
     # Header row with column numbers
     header_cells = ""
     for i in range(1, n + 1):
         style = "border-right: 3px solid #555" if i % mathras_per_beat == 0 else ""
         header_cells += f'    <th style="{style}">{i}</th>\n'
-    header_cells += "    <th></th>\n"
+    header_cells += "    <th></th>\n"  # marker column
+    header_cells += "    <th></th>\n"  # count column
     html_rows = [
         f"  <tr>\n{header_cells}  </tr>",
         f'  <tr><td colspan="{total_cols}" style="border:none; height:8px"></td></tr>',
     ]
 
+    double_bar_count = 0
     for row_num, row in enumerate(rows, start=1):
         row = row + [("", 0)] * (n - len(row))  # pad last row to n columns
         marker = "||" if row_num % 2 == 0 else "|"
@@ -258,10 +260,15 @@ def write_html(words, n, mathras_per_beat, output_path):
             if (col_idx + 1) % mathras_per_beat == 0:
                 style += "; border-right: 3px solid #555"
             cells += f'    <td style="{style}">{w}</td>\n'
-        cells += f'    <td style="color:red">{marker}</td>\n'
+        cells += f'    <td style="color:red; font-weight:bold">{marker}</td>\n'
+        if marker == "||":
+            double_bar_count += 1
+            cells += f'    <td style="font-size:1.4em; font-weight:bold; border:none">{double_bar_count}</td>\n'
+        else:
+            cells += f'    <td style="border:none"></td>\n'
         html_rows.append(f"  <tr>\n{cells}  </tr>")
         if marker == "||":
-            html_rows.append(f'  <tr><td colspan="{total_cols}" style="border:none; height:8px"></td></tr>')
+            html_rows.append(f'  <tr><td colspan="{total_cols + 1}" style="border:none; height:8px"></td></tr>')
     table_body = "\n".join(html_rows)
     html = f"""<!DOCTYPE html>
 <html>
