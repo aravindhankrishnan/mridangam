@@ -1,3 +1,8 @@
+## Requirements
+
+python3 version >= 3.9.6
+
+___
 ## How to run
 
 Assumes the notes in the input rtf file is in 3rd speed
