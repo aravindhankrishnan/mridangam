@@ -132,6 +132,62 @@ def parse_rtf(content):
     return result
 
 
+def load_notes(path):
+    """Load token list from a notes file (one token per line).
+    Returns (tokens, delete_hyphen). If '-' is in the file, delete_hyphen=True
+    and '-' is excluded from the returned token list.
+    """
+    tokens = []
+    delete_hyphen = False
+    with open(path, "r", encoding="utf-8") as f:
+        for line in f:
+            token = line.rstrip("\n")
+            if token == "-":
+                delete_hyphen = True
+            elif token:
+                tokens.append(token)
+    return tokens, delete_hyphen
+
+
+def tokenize_with_notes(char_tuples, tokens, delete_hyphen):
+    """Greedy longest-match tokenizer driven by the notes token list.
+    Spaces, newlines, and (optionally) hyphens are skipped as separators.
+    Returns list of (token, ul, bold, line_num) tuples.
+    Raises ValueError with a 1-based line number on unknown input.
+    """
+    sorted_tokens = sorted(set(tokens), key=len, reverse=True)
+    skip = set(" \n\t\r\xa0-")  # hyphen always skipped (separator); notes '-' entry confirms this
+
+    result = []
+    i = 0
+    total = len(char_tuples)
+
+    while i < total:
+        ch, ul, bold, line_num = char_tuples[i]
+
+        if ch in skip:
+            i += 1
+            continue
+
+        matched = False
+        for token in sorted_tokens:
+            end = i + len(token)
+            if end > total:
+                continue
+            candidate = "".join(char_tuples[j][0] for j in range(i, end))
+            if candidate == token:
+                result.append((token, ul, bold, line_num))
+                i = end
+                matched = True
+                break
+
+        if not matched:
+            context = "".join(char_tuples[j][0] for j in range(i, min(i + 10, total)))
+            raise ValueError(f"Unknown note at line {line_num + 1}: '{context}'. Make sure these notes are part of notes.txt")
+
+    return result
+
+
 def char_triples_to_words(char_triples):
     """Tokenize (char, ul, bold, line_num) tuples into (word, ul, bold, line_num) tuples.
     Delimiters: space, newline, tab, hyphen. Comma is its own token unless
@@ -296,6 +352,7 @@ def main():
     parser.add_argument("--konnakol", help="Path to the input file (.txt or .rtf)")
     parser.add_argument("--speed", type=int, required=True, help="Speed level (mathras_per_beat = 2^(speed-1))")
     parser.add_argument("--increase-one-speed-from-input", action="store_true", help="Insert a comma after every word before fusing")
+    parser.add_argument("--notes", help="Path to notes file with one valid token per line")
     parser.add_argument("-o", "--output", help="Output HTML file (default: input filename with .html extension)")
     args = parser.parse_args()
 
@@ -311,7 +368,11 @@ def main():
 
     if args.konnakol.lower().endswith(".rtf"):
         char_tuples = parse_rtf(content)
-        word_tuples = char_triples_to_words(char_tuples)
+        if args.notes:
+            tokens, delete_hyphen = load_notes(args.notes)
+            word_tuples = tokenize_with_notes(char_tuples, tokens, delete_hyphen)
+        else:
+            word_tuples = char_triples_to_words(char_tuples)
     else:
         plain_words = re.findall(r",|[^ \n\-,]+", content)
         word_tuples = [(w, False, False, 0) for w in plain_words]
