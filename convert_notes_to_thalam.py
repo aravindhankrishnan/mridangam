@@ -132,6 +132,19 @@ def parse_rtf(content):
     return result
 
 
+def strip_comment_lines(char_tuples):
+    """Remove characters belonging to any line whose first non-space
+    character is '#' (comment lines in the input file)."""
+    lines = {}
+    for t in char_tuples:
+        lines.setdefault(t[3], []).append(t[0])
+    comment_lines = {
+        line_num for line_num, chars in lines.items()
+        if "".join(chars).lstrip(" \t").startswith("#")
+    }
+    return [t for t in char_tuples if t[3] not in comment_lines]
+
+
 def load_notes(path):
     """Load token list from a notes file (one token per line).
     Returns (tokens, delete_hyphen). If '-' is in the file, delete_hyphen=True
@@ -368,12 +381,16 @@ def main():
 
     if args.konnakol.lower().endswith(".rtf"):
         char_tuples = parse_rtf(content)
+        char_tuples = strip_comment_lines(char_tuples)
         if args.notes:
             tokens, delete_hyphen = load_notes(args.notes)
             word_tuples = tokenize_with_notes(char_tuples, tokens, delete_hyphen)
         else:
             word_tuples = char_triples_to_words(char_tuples)
     else:
+        content = "\n".join(
+            line for line in content.split("\n") if not line.lstrip(" \t").startswith("#")
+        )
         plain_words = re.findall(r",|[^ \n\-,]+", content)
         word_tuples = [(w, False, False, 0) for w in plain_words]
 
