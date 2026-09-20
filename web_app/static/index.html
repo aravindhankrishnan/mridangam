@@ -1,0 +1,556 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Mridangam Konnakol Converter</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-size: 14px;
+      background: #f0f0f0;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    /* ── Top bar ─────────────────────────────────────────────── */
+    header {
+      background: #2c3e50;
+      color: #ecf0f1;
+      padding: 10px 18px;
+      display: flex;
+      align-items: center;
+      gap: 20px;
+      flex-shrink: 0;
+    }
+
+    header h1 {
+      font-size: 16px;
+      font-weight: 600;
+      letter-spacing: 0.5px;
+    }
+
+    .controls {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    .controls label {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      white-space: nowrap;
+    }
+
+    .controls input[type="number"] {
+      width: 54px;
+      padding: 4px 6px;
+      border-radius: 4px;
+      border: 1px solid #aaa;
+      font-size: 14px;
+    }
+
+    .controls input[type="checkbox"] {
+      width: 15px;
+      height: 15px;
+      cursor: pointer;
+    }
+
+    button {
+      padding: 6px 14px;
+      border: none;
+      border-radius: 4px;
+      font-size: 13px;
+      cursor: pointer;
+      font-weight: 500;
+    }
+
+    .btn-load {
+      background: #4a90d9;
+      color: #fff;
+    }
+    .btn-load:hover { background: #357abd; }
+
+    .btn-reload {
+      background: #8e44ad;
+      color: #fff;
+    }
+    .btn-reload:hover { background: #6c3483; }
+
+    .btn-convert {
+      background: #27ae60;
+      color: #fff;
+      padding: 6px 20px;
+    }
+    .btn-convert:hover { background: #1e8449; }
+    .btn-convert:disabled { background: #7f8c8d; cursor: not-allowed; }
+
+    /* ── Two-pane layout ─────────────────────────────────────── */
+    .panes {
+      display: flex;
+      flex: 1;
+      overflow: hidden;
+    }
+
+    .pane {
+      display: flex;
+      flex-direction: column;
+      min-width: 150px;
+      background: #fff;
+      overflow: hidden;
+    }
+
+    /* ── Drag divider ────────────────────────────────────────── */
+    #divider {
+      width: 6px;
+      background: #bdc3c7;
+      cursor: col-resize;
+      flex-shrink: 0;
+      transition: background 0.15s;
+      position: relative;
+    }
+    #divider:hover, #divider.dragging { background: #4a90d9; }
+    /* Visible grip dots */
+    #divider::after {
+      content: "⋮";
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      color: #fff;
+      font-size: 16px;
+      pointer-events: none;
+      opacity: 0.7;
+    }
+
+    .pane-header {
+      background: #ecf0f1;
+      border-bottom: 1px solid #bdc3c7;
+      padding: 8px 12px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-shrink: 0;
+    }
+
+    .pane-title {
+      font-weight: 600;
+      font-size: 13px;
+      color: #34495e;
+      flex: 1;
+    }
+
+    .file-name {
+      font-size: 12px;
+      color: #7f8c8d;
+      font-style: italic;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      max-width: 180px;
+    }
+
+    /* ── Left pane internals ─────────────────────────────────── */
+    .left-pane {
+      display: flex;
+      flex-direction: column;
+      flex: 1;
+      overflow: hidden;
+    }
+
+    .editor-section {
+      display: flex;
+      flex-direction: column;
+      padding: 10px 12px;
+      gap: 6px;
+      flex: 1;
+      min-height: 0;
+    }
+
+    .editor-section + .editor-section {
+      border-top: 1px solid #dde1e3;
+    }
+
+    .editor-label {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 12px;
+      font-weight: 600;
+      color: #555;
+      flex-shrink: 0;
+    }
+
+    textarea {
+      flex: 1;
+      resize: none;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      padding: 8px;
+      font-family: "Menlo", "Monaco", "Consolas", monospace;
+      font-size: 12px;
+      line-height: 1.5;
+      color: #222;
+      background: #fafafa;
+      min-height: 80px;
+    }
+
+    textarea:focus {
+      outline: none;
+      border-color: #4a90d9;
+      background: #fff;
+    }
+
+    /* ── RTF preview div ─────────────────────────────────────── */
+    #rtf-preview {
+      flex: 3;
+      overflow-y: auto;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      padding: 8px 10px;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-size: 14px;
+      line-height: 1.8;
+      color: #222;
+      background: #fafafa;
+      min-height: 80px;
+      word-break: break-word;
+    }
+
+    #rtf-preview.empty {
+      color: #aaa;
+      font-style: italic;
+    }
+
+    /* ── Right pane ──────────────────────────────────────────── */
+    .right-pane {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    #output-frame {
+      flex: 1;
+      border: none;
+      width: 100%;
+      background: #fff;
+    }
+
+    #output-placeholder {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #aaa;
+      font-size: 14px;
+      font-style: italic;
+      pointer-events: none;
+    }
+
+    /* ── Error banner ────────────────────────────────────────── */
+    #error-banner {
+      display: none;
+      background: #fdecea;
+      border: 1px solid #e74c3c;
+      border-radius: 4px;
+      color: #c0392b;
+      padding: 8px 12px;
+      margin: 8px 12px 0;
+      font-size: 13px;
+      line-height: 1.4;
+    }
+
+    /* Prevent text selection while dragging */
+    body.resizing { user-select: none; cursor: col-resize; }
+
+    /* Hidden file inputs */
+    #rtf-input, #notes-input { display: none; }
+  </style>
+</head>
+<body>
+
+<!-- ── Top bar ───────────────────────────────────────────────── -->
+<header>
+  <h1>🥁 Mridangam Konnakol Converter</h1>
+  <div class="controls">
+    <label>
+      Speed:
+      <input type="number" id="speed" value="3" min="1" max="6" />
+    </label>
+    <label>
+      <input type="checkbox" id="increase-speed" />
+      +1 speed from input
+    </label>
+    <button class="btn-convert" id="btn-convert" onclick="runConvert()">▶ Convert</button>
+  </div>
+</header>
+
+<!-- ── Two panes ─────────────────────────────────────────────── -->
+<div class="panes" id="panes">
+
+  <!-- Left pane -->
+  <div class="pane" id="left-pane">
+    <div class="pane-header">
+      <span class="pane-title">Input</span>
+    </div>
+
+    <div class="left-pane">
+      <!-- RTF preview -->
+      <div class="editor-section" style="flex: 3;">
+        <div class="editor-label">
+          RTF File
+          <button class="btn-load" onclick="document.getElementById('rtf-input').click()">📂 Load RTF</button>
+          <button class="btn-reload" id="btn-reload" onclick="reloadRtf()" style="display:none" title="Re-read the same file from disk">🔄 Reload</button>
+          <span class="file-name" id="rtf-filename">no file loaded</span>
+        </div>
+        <div id="rtf-preview" class="empty">Load an .rtf file to preview its content here…</div>
+      </div>
+
+      <!-- Notes editor -->
+      <div class="editor-section" style="flex: 1;">
+        <div class="editor-label">
+          notes.txt
+          <button class="btn-load" onclick="document.getElementById('notes-input').click()">📂 Load notes.txt</button>
+          <button class="btn-reload" id="btn-reload-notes" onclick="reloadNotes()" style="display:none" title="Re-read the same file from disk">🔄 Reload</button>
+          <span class="file-name" id="notes-filename">no file loaded</span>
+        </div>
+        <textarea id="notes-area" spellcheck="false" placeholder="Load notes.txt or type tokens here (one per line)…"></textarea>
+      </div>
+    </div>
+  </div>
+
+  <!-- Drag divider -->
+  <div id="divider"></div>
+
+  <!-- Right pane -->
+  <div class="pane right-pane" id="right-pane">
+    <div class="pane-header">
+      <span class="pane-title">Output</span>
+      <button class="btn-load" id="btn-copy" onclick="copyOutput()" style="display:none">📋 Copy</button>
+    </div>
+    <div id="error-banner"></div>
+    <div id="output-placeholder">Output will appear here after converting.</div>
+    <iframe id="output-frame" style="display:none" sandbox="allow-same-origin"></iframe>
+  </div>
+
+</div>
+
+<!-- Hidden file pickers -->
+<input type="file" id="rtf-input"   accept=".rtf,text/rtf"  onchange="loadFile(this, 'rtf')" />
+<input type="file" id="notes-input" accept=".txt,text/plain" onchange="loadFile(this, 'notes')" />
+
+<script>
+  // ── State ─────────────────────────────────────────────────────
+  let rawRtfContent   = '';
+  let lastRtfFile     = null;   // File handle for reload
+  let lastNotesFile   = null;   // File handle for reload
+
+  // ── File loading ──────────────────────────────────────────────
+  function loadFile(input, target) {
+    const file = input.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = async function (e) {
+      if (target === 'rtf') {
+        rawRtfContent = e.target.result;
+        lastRtfFile   = file;
+        document.getElementById('rtf-filename').textContent = file.name;
+        document.getElementById('btn-reload').style.display = 'inline-block';
+        await updateRtfPreview();
+      } else {
+        document.getElementById('notes-area').value = e.target.result;
+        lastNotesFile  = file;
+        document.getElementById('notes-filename').textContent = file.name;
+        document.getElementById('btn-reload-notes').style.display = 'inline-block';
+      }
+    };
+    reader.readAsText(file, 'UTF-8');
+    input.value = ''; // allow re-selecting the same file
+  }
+
+  // ── Reload (re-read from disk via file picker) ────────────────
+  // Browsers don't allow re-reading a File object after the input is cleared,
+  // so we open the picker pre-filtered to the same filename as a convenience.
+  function reloadRtf() {
+    document.getElementById('rtf-input').click();
+  }
+
+  function reloadNotes() {
+    document.getElementById('notes-input').click();
+  }
+
+  // ── Fetch styled preview from server ─────────────────────────
+  async function updateRtfPreview() {
+    const preview = document.getElementById('rtf-preview');
+    preview.classList.remove('empty');
+    preview.textContent = 'Parsing…';
+
+    try {
+      const resp = await fetch('/preview-rtf', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rtf_content: rawRtfContent }),
+      });
+      const data = await resp.json();
+      if (data.error) {
+        preview.classList.add('empty');
+        preview.textContent = '⚠ Could not parse RTF: ' + data.error;
+      } else {
+        preview.innerHTML = data.preview || '<em style="color:#aaa">Empty file</em>';
+      }
+    } catch (err) {
+      preview.classList.add('empty');
+      preview.textContent = '⚠ Could not reach server.';
+    }
+  }
+
+  // ── Convert ───────────────────────────────────────────────────
+  async function runConvert() {
+    const notesContent    = document.getElementById('notes-area').value;
+    const speed           = parseInt(document.getElementById('speed').value, 10);
+    const increaseOneSpeed = document.getElementById('increase-speed').checked;
+
+    if (!rawRtfContent) {
+      showError('Please load an RTF file first.');
+      return;
+    }
+
+    clearError();
+    setConverting(true);
+
+    try {
+      const resp = await fetch('/convert', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          rtf_content:      rawRtfContent,
+          notes_content:    notesContent,
+          speed:            speed,
+          increase_one_speed: increaseOneSpeed,
+        }),
+      });
+
+      const data = await resp.json();
+      if (!resp.ok || data.error) {
+        showError(data.error || `Server error (${resp.status})`);
+      } else {
+        renderOutput(data.html);
+      }
+    } catch (err) {
+      showError('Could not reach the server. Is app.py running?');
+    } finally {
+      setConverting(false);
+    }
+  }
+
+  // ── Render result in iframe ───────────────────────────────────
+  function renderOutput(html) {
+    const frame       = document.getElementById('output-frame');
+    const placeholder = document.getElementById('output-placeholder');
+    const copyBtn     = document.getElementById('btn-copy');
+
+    placeholder.style.display = 'none';
+    frame.style.display       = 'block';
+    copyBtn.style.display     = 'inline-block';
+
+    frame.contentDocument.open();
+    frame.contentDocument.write(html);
+    frame.contentDocument.close();
+  }
+
+  // ── Copy output ───────────────────────────────────────────────
+  function copyOutput() {
+    const frame = document.getElementById('output-frame');
+    if (!frame.contentDocument) return;
+    const win = frame.contentWindow;
+    win.focus();
+    win.document.execCommand('selectAll');
+    win.document.execCommand('copy');
+    const btn = document.getElementById('btn-copy');
+    btn.textContent = '✅ Copied!';
+    setTimeout(() => { btn.textContent = '📋 Copy'; }, 2000);
+  }
+
+  // ── Helpers ───────────────────────────────────────────────────
+  function showError(msg) {
+    const b = document.getElementById('error-banner');
+    b.textContent  = '⚠ ' + msg;
+    b.style.display = 'block';
+  }
+
+  function clearError() {
+    const b = document.getElementById('error-banner');
+    b.style.display = 'none';
+    b.textContent   = '';
+  }
+
+  function setConverting(busy) {
+    const btn = document.getElementById('btn-convert');
+    btn.disabled    = busy;
+    btn.textContent = busy ? '⏳ Converting…' : '▶ Convert';
+  }
+
+  // ── Cmd/Ctrl+Enter shortcut ───────────────────────────────────
+  document.addEventListener('keydown', function (e) {
+    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') runConvert();
+  });
+
+  // ── Pane resize (drag divider) ────────────────────────────────
+  (function () {
+    const divider   = document.getElementById('divider');
+    const leftPane  = document.getElementById('left-pane');
+    const rightPane = document.getElementById('right-pane');
+    const panesEl   = document.getElementById('panes');
+    const frame     = document.getElementById('output-frame');
+
+    let dragging = false;
+
+    divider.addEventListener('mousedown', function (e) {
+      dragging = true;
+      divider.classList.add('dragging');
+      document.body.classList.add('resizing');
+
+      // Block the iframe from swallowing mouse events during drag
+      frame.style.pointerEvents = 'none';
+
+      e.preventDefault();
+    });
+
+    document.addEventListener('mousemove', function (e) {
+      if (!dragging) return;
+
+      const panesRect = panesEl.getBoundingClientRect();
+      const dividerW  = divider.offsetWidth;
+      const totalW    = panesRect.width - dividerW;
+      let   leftW     = e.clientX - panesRect.left;
+
+      // Clamp: each pane at least 150px
+      leftW = Math.max(150, Math.min(leftW, totalW - 150));
+      const rightW = totalW - leftW;
+
+      // Set explicit pixel widths on both panes so they don't fight each other
+      leftPane.style.flex  = 'none';
+      leftPane.style.width = leftW + 'px';
+      rightPane.style.flex  = 'none';
+      rightPane.style.width = rightW + 'px';
+    });
+
+    document.addEventListener('mouseup', function () {
+      if (!dragging) return;
+      dragging = false;
+      divider.classList.remove('dragging');
+      document.body.classList.remove('resizing');
+      frame.style.pointerEvents = '';
+    });
+  })();
+</script>
+</body>
+</html>
