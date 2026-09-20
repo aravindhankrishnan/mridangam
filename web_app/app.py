@@ -1,11 +1,7 @@
 #!/usr/bin/env python3
 """Flask web app for the mridangam konnakol converter."""
 
-import sys
 import os
-
-# Allow importing from the parent directory (where convert_notes_to_thalam.py lives)
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from flask import Flask, request, jsonify, send_from_directory
 from convert_notes_to_thalam import convert, parse_rtf, strip_comment_lines
@@ -109,5 +105,7 @@ def convert_endpoint():
 
 
 if __name__ == "__main__":
-    print("Starting mridangam web app at http://localhost:5678")
-    app.run(debug=True, port=5678)
+    port = int(os.environ.get("PORT", 5678))
+    debug = os.environ.get("FLASK_DEBUG", "0") == "1"
+    print(f"Starting mridangam web app at http://localhost:{port}")
+    app.run(debug=debug, host="0.0.0.0", port=port)
