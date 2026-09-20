@@ -14,6 +14,24 @@ def index():
     return send_from_directory(app.static_folder, "index.html")
 
 
+@app.route("/debug")
+def debug():
+    import os
+    cwd = os.getcwd()
+    file_dir = os.path.dirname(os.path.abspath(__file__))
+    static = app.static_folder
+    static_exists = os.path.isdir(static) if static else False
+    index_exists = os.path.isfile(os.path.join(static, "index.html")) if static_exists else False
+    return {
+        "cwd": cwd,
+        "file_dir": file_dir,
+        "static_folder": static,
+        "static_folder_exists": static_exists,
+        "index_html_exists": index_exists,
+        "static_contents": os.listdir(static) if static_exists else [],
+    }
+
+
 @app.route("/preview-rtf", methods=["POST"])
 def preview_rtf_endpoint():
     data = request.get_json(force=True)
