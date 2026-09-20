@@ -302,18 +302,17 @@ def speed_up_transform(word_tuples):
 LINE_COLORS = ["#cce8ff", "#ccf0d8"]  # light blue, light green
 
 
-def write_html(words, n, mathras_per_beat, output_path):
-    # words is a list of (word, line_num) pairs
+def build_html_string(words, n, mathras_per_beat):
+    """Build and return the HTML table as a string (used by the web app)."""
     rows = [words[i : i + n] for i in range(0, len(words), n)]
     total_cols = n + 2  # n word columns + 1 marker column + 1 count column
 
-    # Header row with column numbers
     header_cells = ""
     for i in range(1, n + 1):
         style = "border-right: 3px solid #555" if i % mathras_per_beat == 0 else ""
         header_cells += f'    <th style="{style}">{i}</th>\n'
-    header_cells += "    <th></th>\n"  # marker column
-    header_cells += "    <th></th>\n"  # count column
+    header_cells += "    <th></th>\n"
+    header_cells += "    <th></th>\n"
     html_rows = [
         f"  <tr>\n{header_cells}  </tr>",
         f'  <tr><td colspan="{total_cols}" style="border:none; height:8px"></td></tr>',
@@ -321,7 +320,7 @@ def write_html(words, n, mathras_per_beat, output_path):
 
     double_bar_count = 0
     for row_num, row in enumerate(rows, start=1):
-        row = row + [("", 0)] * (n - len(row))  # pad last row to n columns
+        row = row + [("", 0)] * (n - len(row))
         marker = "||" if row_num % 2 == 0 else "|"
         cells = ""
         for col_idx, (w, line_num) in enumerate(row):
@@ -339,7 +338,7 @@ def write_html(words, n, mathras_per_beat, output_path):
         if marker == "||":
             html_rows.append(f'  <tr><td colspan="{total_cols + 1}" style="border:none; height:8px"></td></tr>')
     table_body = "\n".join(html_rows)
-    html = f"""<!DOCTYPE html>
+    return f"""<!DOCTYPE html>
 <html>
 <head>
 <meta charset="utf-8">
@@ -356,6 +355,53 @@ def write_html(words, n, mathras_per_beat, output_path):
 </body>
 </html>
 """
+
+
+def convert(rtf_content, notes_content, speed, increase_one_speed=False):
+    """Convert RTF konnakol content to an HTML table string.
+
+    Args:
+        rtf_content (str): Raw RTF file content.
+        notes_content (str): Contents of notes.txt (one token per line).
+        speed (int): Speed level (mathras_per_beat = 2^(speed-1)).
+        increase_one_speed (bool): Insert a comma after every plain word before fusing.
+
+    Returns:
+        str: Complete HTML document as a string.
+
+    Raises:
+        ValueError: If an unrecognised note token is encountered.
+    """
+    mathras_per_beat = 2 ** (speed - 1)
+    n = mathras_per_beat * 4  # 4 beats per line
+
+    char_tuples = parse_rtf(rtf_content)
+    char_tuples = strip_comment_lines(char_tuples)
+
+    if notes_content and notes_content.strip():
+        tokens = []
+        delete_hyphen = False
+        for line in notes_content.splitlines():
+            token = line.rstrip("\n")
+            if token == "-":
+                delete_hyphen = True
+            elif token:
+                tokens.append(token)
+        word_tuples = tokenize_with_notes(char_tuples, tokens, delete_hyphen)
+    else:
+        word_tuples = char_triples_to_words(char_tuples)
+
+    if increase_one_speed:
+        words = speed_up_transform(word_tuples)
+    else:
+        words = merge_formatted(word_tuples)
+
+    return build_html_string(words, n, mathras_per_beat)
+
+
+def write_html(words, n, mathras_per_beat, output_path):
+    """Write the HTML table to a file (used by the CLI)."""
+    html = build_html_string(words, n, mathras_per_beat)
     with open(output_path, "w", encoding="utf-8") as f:
         f.write(html)
 
