@@ -6,7 +6,7 @@ import os
 from flask import Flask, request, jsonify, send_from_directory
 from convert_notes_to_thalam import convert, parse_rtf, strip_comment_lines
 
-app = Flask(__name__, static_folder="static")
+app = Flask(__name__, static_folder=os.path.join(os.path.dirname(__file__), "static"))
 
 
 @app.route("/")
