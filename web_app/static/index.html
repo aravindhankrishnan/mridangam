@@ -56,12 +56,6 @@
       font-size: 14px;
     }
 
-    .controls input[type="checkbox"] {
-      width: 15px;
-      height: 15px;
-      cursor: pointer;
-    }
-
     button {
       padding: 6px 14px;
       border: none;
@@ -76,12 +70,6 @@
       color: #fff;
     }
     .btn-load:hover { background: #357abd; }
-
-    .btn-reload {
-      background: #8e44ad;
-      color: #fff;
-    }
-    .btn-reload:hover { background: #6c3483; }
 
     .btn-convert {
       background: #27ae60;
@@ -284,10 +272,6 @@
       Speed:
       <input type="number" id="speed" value="3" min="1" max="6" />
     </label>
-    <label>
-      <input type="checkbox" id="increase-speed" />
-      +1 speed from input
-    </label>
     <button class="btn-convert" id="btn-convert" onclick="runConvert()">▶ Convert</button>
   </div>
 </header>
@@ -307,7 +291,6 @@
         <div class="editor-label">
           RTF File
           <button class="btn-load" onclick="document.getElementById('rtf-input').click()">📂 Load RTF</button>
-          <button class="btn-reload" id="btn-reload" onclick="reloadRtf()" style="display:none" title="Re-read the same file from disk">🔄 Reload</button>
           <span class="file-name" id="rtf-filename">no file loaded</span>
         </div>
         <div id="rtf-preview" class="empty">Load an .rtf file to preview its content here…</div>
@@ -318,7 +301,6 @@
         <div class="editor-label">
           notes.txt
           <button class="btn-load" onclick="document.getElementById('notes-input').click()">📂 Load notes.txt</button>
-          <button class="btn-reload" id="btn-reload-notes" onclick="reloadNotes()" style="display:none" title="Re-read the same file from disk">🔄 Reload</button>
           <span class="file-name" id="notes-filename">no file loaded</span>
         </div>
         <textarea id="notes-area" spellcheck="false" placeholder="Load notes.txt or type tokens here (one per line)…"></textarea>
@@ -348,9 +330,7 @@
 
 <script>
   // ── State ─────────────────────────────────────────────────────
-  let rawRtfContent   = '';
-  let lastRtfFile     = null;   // File handle for reload
-  let lastNotesFile   = null;   // File handle for reload
+  let rawRtfContent = '';
 
   // ── File loading ──────────────────────────────────────────────
   function loadFile(input, target) {
@@ -361,30 +341,15 @@
     reader.onload = async function (e) {
       if (target === 'rtf') {
         rawRtfContent = e.target.result;
-        lastRtfFile   = file;
         document.getElementById('rtf-filename').textContent = file.name;
-        document.getElementById('btn-reload').style.display = 'inline-block';
         await updateRtfPreview();
       } else {
         document.getElementById('notes-area').value = e.target.result;
-        lastNotesFile  = file;
         document.getElementById('notes-filename').textContent = file.name;
-        document.getElementById('btn-reload-notes').style.display = 'inline-block';
       }
     };
     reader.readAsText(file, 'UTF-8');
-    input.value = ''; // allow re-selecting the same file
-  }
-
-  // ── Reload (re-read from disk via file picker) ────────────────
-  // Browsers don't allow re-reading a File object after the input is cleared,
-  // so we open the picker pre-filtered to the same filename as a convenience.
-  function reloadRtf() {
-    document.getElementById('rtf-input').click();
-  }
-
-  function reloadNotes() {
-    document.getElementById('notes-input').click();
+    input.value = '';
   }
 
   // ── Fetch styled preview from server ─────────────────────────
@@ -414,9 +379,8 @@
 
   // ── Convert ───────────────────────────────────────────────────
   async function runConvert() {
-    const notesContent    = document.getElementById('notes-area').value;
-    const speed           = parseInt(document.getElementById('speed').value, 10);
-    const increaseOneSpeed = document.getElementById('increase-speed').checked;
+    const notesContent = document.getElementById('notes-area').value;
+    const speed        = parseInt(document.getElementById('speed').value, 10);
 
     if (!rawRtfContent) {
       showError('Please load an RTF file first.');
@@ -431,10 +395,10 @@
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          rtf_content:      rawRtfContent,
-          notes_content:    notesContent,
-          speed:            speed,
-          increase_one_speed: increaseOneSpeed,
+          rtf_content:   rawRtfContent,
+          notes_content: notesContent,
+          speed:         speed,
+          increase_one_speed: false,
         }),
       });
 

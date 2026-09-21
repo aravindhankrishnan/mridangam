@@ -1,0 +1,3 @@
+*.html
+!web_app/static/index.html
+*DS_Store
