@@ -175,26 +175,6 @@
       flex-shrink: 0;
     }
 
-    textarea {
-      flex: 1;
-      resize: none;
-      border: 1px solid #ccc;
-      border-radius: 4px;
-      padding: 8px;
-      font-family: "Menlo", "Monaco", "Consolas", monospace;
-      font-size: 12px;
-      line-height: 1.5;
-      color: #222;
-      background: #fafafa;
-      min-height: 80px;
-    }
-
-    textarea:focus {
-      outline: none;
-      border-color: #4a90d9;
-      background: #fff;
-    }
-
     /* ── RTF preview div ─────────────────────────────────────── */
     #rtf-preview {
       flex: 3;
@@ -287,23 +267,13 @@
 
     <div class="left-pane">
       <!-- RTF preview -->
-      <div class="editor-section" style="flex: 3;">
+      <div class="editor-section" style="flex: 1;">
         <div class="editor-label">
           RTF File
           <button class="btn-load" onclick="document.getElementById('rtf-input').click()">📂 Load RTF</button>
           <span class="file-name" id="rtf-filename">no file loaded</span>
         </div>
         <div id="rtf-preview" class="empty">Load an .rtf file to preview its content here…</div>
-      </div>
-
-      <!-- Notes editor -->
-      <div class="editor-section" style="flex: 1;">
-        <div class="editor-label">
-          notes.txt
-          <button class="btn-load" onclick="document.getElementById('notes-input').click()">📂 Load notes.txt</button>
-          <span class="file-name" id="notes-filename">no file loaded</span>
-        </div>
-        <textarea id="notes-area" spellcheck="false" placeholder="Load notes.txt or type tokens here (one per line)…"></textarea>
       </div>
     </div>
   </div>
@@ -324,29 +294,23 @@
 
 </div>
 
-<!-- Hidden file pickers -->
-<input type="file" id="rtf-input"   accept=".rtf,text/rtf"  onchange="loadFile(this, 'rtf')" />
-<input type="file" id="notes-input" accept=".txt,text/plain" onchange="loadFile(this, 'notes')" />
+<!-- Hidden file picker -->
+<input type="file" id="rtf-input" accept=".rtf,text/rtf" onchange="loadFile(this)" />
 
 <script>
   // ── State ─────────────────────────────────────────────────────
   let rawRtfContent = '';
 
   // ── File loading ──────────────────────────────────────────────
-  function loadFile(input, target) {
+  function loadFile(input) {
     const file = input.files[0];
     if (!file) return;
 
     const reader = new FileReader();
     reader.onload = async function (e) {
-      if (target === 'rtf') {
-        rawRtfContent = e.target.result;
-        document.getElementById('rtf-filename').textContent = file.name;
-        await updateRtfPreview();
-      } else {
-        document.getElementById('notes-area').value = e.target.result;
-        document.getElementById('notes-filename').textContent = file.name;
-      }
+      rawRtfContent = e.target.result;
+      document.getElementById('rtf-filename').textContent = file.name;
+      await updateRtfPreview();
     };
     reader.readAsText(file, 'UTF-8');
     input.value = '';
@@ -379,8 +343,7 @@
 
   // ── Convert ───────────────────────────────────────────────────
   async function runConvert() {
-    const notesContent = document.getElementById('notes-area').value;
-    const speed        = parseInt(document.getElementById('speed').value, 10);
+    const speed = parseInt(document.getElementById('speed').value, 10);
 
     if (!rawRtfContent) {
       showError('Please load an RTF file first.');
@@ -395,9 +358,8 @@
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          rtf_content:   rawRtfContent,
-          notes_content: notesContent,
-          speed:         speed,
+          rtf_content:        rawRtfContent,
+          speed:              speed,
           increase_one_speed: false,
         }),
       });
