@@ -357,39 +357,23 @@ def build_html_string(words, n, mathras_per_beat):
 """
 
 
-def convert(rtf_content, notes_content, speed, increase_one_speed=False):
+def convert(rtf_content, speed, increase_one_speed=False):
     """Convert RTF konnakol content to an HTML table string.
 
     Args:
         rtf_content (str): Raw RTF file content.
-        notes_content (str): Contents of notes.txt (one token per line).
         speed (int): Speed level (mathras_per_beat = 2^(speed-1)).
         increase_one_speed (bool): Insert a comma after every plain word before fusing.
 
     Returns:
         str: Complete HTML document as a string.
-
-    Raises:
-        ValueError: If an unrecognised note token is encountered.
     """
     mathras_per_beat = 2 ** (speed - 1)
     n = mathras_per_beat * 4  # 4 beats per line
 
     char_tuples = parse_rtf(rtf_content)
     char_tuples = strip_comment_lines(char_tuples)
-
-    if notes_content and notes_content.strip():
-        tokens = []
-        delete_hyphen = False
-        for line in notes_content.splitlines():
-            token = line.rstrip("\n")
-            if token == "-":
-                delete_hyphen = True
-            elif token:
-                tokens.append(token)
-        word_tuples = tokenize_with_notes(char_tuples, tokens, delete_hyphen)
-    else:
-        word_tuples = char_triples_to_words(char_tuples)
+    word_tuples = char_triples_to_words(char_tuples)
 
     if increase_one_speed:
         words = speed_up_transform(word_tuples)
@@ -411,7 +395,6 @@ def main():
     parser.add_argument("--konnakol", help="Path to the input file (.txt or .rtf)")
     parser.add_argument("--speed", type=int, required=True, help="Speed level (mathras_per_beat = 2^(speed-1))")
     parser.add_argument("--increase-one-speed-from-input", action="store_true", help="Insert a comma after every word before fusing")
-    parser.add_argument("--notes", help="Path to notes file with one valid token per line")
     parser.add_argument("-o", "--output", help="Output HTML file (default: input filename with .html extension)")
     args = parser.parse_args()
 
@@ -428,11 +411,7 @@ def main():
     if args.konnakol.lower().endswith(".rtf"):
         char_tuples = parse_rtf(content)
         char_tuples = strip_comment_lines(char_tuples)
-        if args.notes:
-            tokens, delete_hyphen = load_notes(args.notes)
-            word_tuples = tokenize_with_notes(char_tuples, tokens, delete_hyphen)
-        else:
-            word_tuples = char_triples_to_words(char_tuples)
+        word_tuples = char_triples_to_words(char_tuples)
     else:
         content = "\n".join(
             line for line in content.split("\n") if not line.lstrip(" \t").startswith("#")

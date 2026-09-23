@@ -96,7 +96,7 @@ def convert_endpoint():
         return jsonify({"error": "Speed must be an integer."}), 400
 
     try:
-        html = convert(rtf_content, notes_content, speed, increase_one_speed)
+        html = convert(rtf_content, speed, increase_one_speed)
         return jsonify({"html": html})
     except ValueError as e:
         return jsonify({"error": str(e)}), 422
