@@ -352,7 +352,7 @@ def build_html_string(words, n, mathras_per_beat):
         padded_row = row + [("", 0)] * (n - len(row))
         marker = "||" if row_num % 2 == 0 else "|"
         cells = ""
-        if marker == "||":
+        if marker == "|":
             double_bar_count += 1
             cells += f'    <td style="font-size:1.4em; font-weight:bold; border:none">{double_bar_count}</td>\n'
         else:
