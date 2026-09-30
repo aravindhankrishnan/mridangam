@@ -336,11 +336,11 @@ def build_html_string(words, n, mathras_per_beat):
     total_cols = n + 2  # n word columns + 1 marker column + 1 count column
 
     header_cells = ""
+    header_cells += "    <th></th>\n"  # count column (left)
+    header_cells += "    <th></th>\n"  # marker column (left)
     for i in range(1, n + 1):
         style = "border-right: 3px solid #555" if i % mathras_per_beat == 0 else ""
         header_cells += f'    <th style="{style}">{i}</th>\n'
-    header_cells += "    <th></th>\n"
-    header_cells += "    <th></th>\n"
     html_rows = [
         f"  <tr>\n{header_cells}  </tr>",
         f'  <tr><td colspan="{total_cols}" style="border:none; height:8px"></td></tr>',
@@ -352,18 +352,18 @@ def build_html_string(words, n, mathras_per_beat):
         padded_row = row + [("", 0)] * (n - len(row))
         marker = "||" if row_num % 2 == 0 else "|"
         cells = ""
+        if marker == "||":
+            double_bar_count += 1
+            cells += f'    <td style="font-size:1.4em; font-weight:bold; border:none">{double_bar_count}</td>\n'
+        else:
+            cells += f'    <td style="border:none"></td>\n'
+        cells += f'    <td style="color:red; font-weight:bold">{marker}</td>\n'
         for col_idx, (w, line_num) in enumerate(padded_row):
             style = f"background:{LINE_COLORS[line_num % 2]}"
             if (col_idx + 1) % mathras_per_beat == 0:
                 style += "; border-right: 3px solid #555"
             cells += f'    <td style="{style}" data-pos="{pos}">{w}</td>\n'
             pos += 1
-        cells += f'    <td style="color:red; font-weight:bold">{marker}</td>\n'
-        if marker == "||":
-            double_bar_count += 1
-            cells += f'    <td style="font-size:1.4em; font-weight:bold; border:none">{double_bar_count}</td>\n'
-        else:
-            cells += f'    <td style="border:none"></td>\n'
         html_rows.append(f"  <tr>\n{cells}  </tr>")
         if marker == "||":
             html_rows.append(f'  <tr><td colspan="{total_cols + 1}" style="border:none; height:8px"></td></tr>')
