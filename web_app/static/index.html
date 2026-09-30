@@ -196,6 +196,16 @@
       font-style: italic;
     }
 
+    /* Clickable word spans in the preview */
+    #rtf-preview span[data-pos] {
+      cursor: pointer;
+      border-radius: 2px;
+      padding: 0 1px;
+    }
+    #rtf-preview span[data-pos]:hover {
+      background: rgba(0,0,0,0.08);
+    }
+
     /* ── Right pane ──────────────────────────────────────────── */
     .right-pane {
       flex: 1;
@@ -319,6 +329,7 @@
   // ── Fetch styled preview from server ─────────────────────────
   async function updateRtfPreview() {
     const preview = document.getElementById('rtf-preview');
+    const speed   = parseInt(document.getElementById('speed').value, 10);
     preview.classList.remove('empty');
     preview.textContent = 'Parsing…';
 
@@ -326,7 +337,7 @@
       const resp = await fetch('/preview-rtf', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ rtf_content: rawRtfContent }),
+        body: JSON.stringify({ rtf_content: rawRtfContent, speed: speed }),
       });
       const data = await resp.json();
       if (data.error) {
@@ -427,6 +438,32 @@
   // ── Cmd/Ctrl+Enter shortcut ───────────────────────────────────
   document.addEventListener('keydown', function (e) {
     if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') runConvert();
+  });
+
+  // ── Click word in preview → highlight cell in output ─────────
+  document.getElementById('rtf-preview').addEventListener('click', function (e) {
+    // Walk up to find the nearest span with data-pos
+    let target = e.target;
+    while (target && target !== this) {
+      if (target.dataset && target.dataset.pos !== undefined) break;
+      target = target.parentElement;
+    }
+    if (!target || target.dataset.pos === undefined) return;
+
+    const pos = target.dataset.pos;
+    const frame = document.getElementById('output-frame');
+    if (frame.style.display === 'none' || !frame.contentDocument) return;
+
+    const iframeDoc = frame.contentDocument;
+
+    // Clear previous highlight
+    iframeDoc.querySelectorAll('td.highlighted').forEach(td => td.classList.remove('highlighted'));
+
+    // Find and highlight the matching cell
+    const cell = iframeDoc.querySelector(`td[data-pos="${pos}"]`);
+    if (!cell) return;
+    cell.classList.add('highlighted');
+    cell.scrollIntoView({ behavior: 'smooth', block: 'center' });
   });
 
   // ── Pane resize (drag divider) ────────────────────────────────

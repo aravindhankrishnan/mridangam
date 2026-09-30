@@ -329,7 +329,9 @@ LINE_COLORS = ["#cce8ff", "#ccf0d8"]  # light blue, light green
 
 
 def build_html_string(words, n, mathras_per_beat):
-    """Build and return the HTML table as a string (used by the web app)."""
+    """Build and return the HTML table as a string (used by the web app).
+    Each content <td> gets a data-pos attribute equal to its index in the word list.
+    """
     rows = [words[i : i + n] for i in range(0, len(words), n)]
     total_cols = n + 2  # n word columns + 1 marker column + 1 count column
 
@@ -345,15 +347,17 @@ def build_html_string(words, n, mathras_per_beat):
     ]
 
     double_bar_count = 0
+    pos = 0  # global word index across all rows
     for row_num, row in enumerate(rows, start=1):
-        row = row + [("", 0)] * (n - len(row))
+        padded_row = row + [("", 0)] * (n - len(row))
         marker = "||" if row_num % 2 == 0 else "|"
         cells = ""
-        for col_idx, (w, line_num) in enumerate(row):
+        for col_idx, (w, line_num) in enumerate(padded_row):
             style = f"background:{LINE_COLORS[line_num % 2]}"
             if (col_idx + 1) % mathras_per_beat == 0:
                 style += "; border-right: 3px solid #555"
-            cells += f'    <td style="{style}">{w}</td>\n'
+            cells += f'    <td style="{style}" data-pos="{pos}">{w}</td>\n'
+            pos += 1
         cells += f'    <td style="color:red; font-weight:bold">{marker}</td>\n'
         if marker == "||":
             double_bar_count += 1
@@ -372,6 +376,7 @@ def build_html_string(words, n, mathras_per_beat):
   table {{ border-collapse: collapse; }}
   td, th {{ border: 1px solid #999; padding: 6px 10px; text-align: center; }}
   th {{ background: #d0d0d0; }}
+  td.highlighted {{ outline: 3px solid #e67e22; background: #fef3cd !important; }}
 </style>
 </head>
 <body>
@@ -381,6 +386,184 @@ def build_html_string(words, n, mathras_per_beat):
 </body>
 </html>
 """
+
+
+def build_preview_html(rtf_content, speed, increase_one_speed=False):
+    """Build a styled HTML preview of the RTF content where each word span
+    carries a data-pos attribute matching the corresponding output cell index.
+
+    This runs the same pipeline as convert() so the positions are exact:
+      parse_rtf → strip_comment_lines → char_triples_to_words
+      → merge_formatted (or speed_up_transform)
+
+    Comment lines are shown in the preview but carry no data-pos.
+
+    Returns: HTML string (fragment, no <html> wrapper needed).
+    """
+    char_tuples, colortbl = parse_rtf(rtf_content)
+
+    # ── Build the output word list (same as convert()) to get positions ───────
+    stripped = strip_comment_lines(char_tuples)
+    word_tuples = char_triples_to_words(stripped)
+    if increase_one_speed:
+        output_words = speed_up_transform(word_tuples)
+    else:
+        output_words = merge_formatted(word_tuples)
+
+    # Map from input-word index → output cell (data-pos).
+    # merge_formatted / speed_up_transform consume word_tuples in order and
+    # produce output_words. We replay merge_formatted here to build the mapping.
+    # input_to_output[i] = output cell index for word_tuples[i]
+    input_to_output = {}
+    if increase_one_speed:
+        out_pos = 0
+        i = 0
+        while i < len(word_tuples):
+            word, ul, bold, line_num = word_tuples[i]
+            if ul or bold:
+                run_start = i
+                while i < len(word_tuples) and word_tuples[i][1] == ul and word_tuples[i][2] == bold:
+                    input_to_output[i] = out_pos
+                    out_pos += 1
+                    i += 1
+            else:
+                input_to_output[i] = out_pos
+                out_pos += 1  # word cell
+                out_pos += 1  # comma cell
+                i += 1
+    else:
+        out_pos = 0
+        i = 0
+        while i < len(word_tuples):
+            word, ul, bold, line_num = word_tuples[i]
+            if ul and bold:
+                group_start = i
+                group = []
+                while i < len(word_tuples) and word_tuples[i][1] and word_tuples[i][2]:
+                    group.append(i)
+                    i += 1
+                for chunk_start in range(0, len(group), 4):
+                    for gi in group[chunk_start:chunk_start + 4]:
+                        input_to_output[gi] = out_pos
+                    out_pos += 1
+            elif ul or bold:
+                group = []
+                while i < len(word_tuples) and word_tuples[i][1] == ul and word_tuples[i][2] == bold:
+                    group.append(i)
+                    i += 1
+                for chunk_start in range(0, len(group), 2):
+                    for gi in group[chunk_start:chunk_start + 2]:
+                        input_to_output[gi] = out_pos
+                    out_pos += 1
+            else:
+                input_to_output[i] = out_pos
+                out_pos += 1
+                i += 1
+
+    # ── Build preview HTML with per-word spans and data-pos ───────────────────
+    # We work from char_tuples (NOT stripped) so comment lines appear,
+    # but we need to know which char_tuple index maps to which word_tuple index.
+    # Strategy: re-run char_triples_to_words on stripped tuples to get word
+    # boundaries, tracking which char index each word started at; then map
+    # char positions back into the full (unstripped) char stream.
+    #
+    # Simpler approach: work at the word level directly.
+    # Re-tokenize stripped chars to get (word, ul, bold, cf, line_num) with color,
+    # then render them with data-pos. Comment lines are injected separately.
+
+    # Collect comment line numbers from the full stream
+    lines_content = {}
+    for t in char_tuples:
+        lines_content.setdefault(t[4], []).append(t[0])
+    comment_line_nums = {
+        ln for ln, chars in lines_content.items()
+        if "".join(chars).lstrip(" \t").startswith("#")
+    }
+
+    # Re-tokenize stripped chars keeping color info
+    colored_words = []  # (word, ul, bold, cf, line_num)
+    current_chars = []
+    current_ul = current_bold = False
+    current_cf = 0
+    current_line = 0
+    sc = stripped  # shorthand
+    n_sc = len(sc)
+
+    for idx in range(n_sc):
+        char, ul, bold, cf, line_num = sc[idx]
+        if char in " \n\t\r\xa0":
+            if current_chars:
+                colored_words.append(("".join(current_chars), current_ul, current_bold, current_cf, current_line))
+                current_chars = []
+        elif char == "-":
+            if current_chars:
+                colored_words.append(("".join(current_chars), current_ul, current_bold, current_cf, current_line))
+                current_chars = []
+        elif char == ",":
+            if current_chars:
+                colored_words.append(("".join(current_chars), current_ul, current_bold, current_cf, current_line))
+                current_chars = []
+            next_char = sc[idx + 1][0] if idx + 1 < n_sc else ""
+            if next_char not in "\n\r":
+                colored_words.append((",", ul, bold, cf, line_num))
+        else:
+            if current_chars and (ul != current_ul or bold != current_bold or cf != current_cf):
+                colored_words.append(("".join(current_chars), current_ul, current_bold, current_cf, current_line))
+                current_chars = []
+            current_chars.append(char)
+            current_ul = ul
+            current_bold = bold
+            current_cf = cf
+            current_line = line_num
+    if current_chars:
+        colored_words.append(("".join(current_chars), current_ul, current_bold, current_cf, current_line))
+
+    # Build line_num → list of (word, ul, bold, cf, input_word_idx) mapping
+    # so we can inject comment lines at the right positions.
+    # Group colored_words by their line_num.
+    # input_word_idx is the index into word_tuples (for looking up input_to_output).
+    # Note: colored_words aligns with word_tuples (same tokenization), so index matches.
+    by_line = {}  # line_num → [(word, ul, bold, cf, word_tuple_idx)]
+    wt_idx = 0
+    for w, ul, bold, cf, line_num in colored_words:
+        by_line.setdefault(line_num, []).append((w, ul, bold, cf, wt_idx))
+        wt_idx += 1
+
+    # Collect all line nums (content + comment), sorted
+    all_line_nums = sorted(set(list(by_line.keys()) + list(comment_line_nums)))
+
+    def make_span(text, ul, bold, cf, pos):
+        styles = []
+        if bold:  styles.append("font-weight:bold")
+        if ul:    styles.append("text-decoration:underline")
+        if cf and cf < len(colortbl) and colortbl[cf]:
+            styles.append(f"color:{colortbl[cf]}")
+        esc = text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+        style_attr = f' style="{";".join(styles)}"' if styles else ''
+        pos_attr   = f' data-pos="{pos}"' if pos is not None else ''
+        if style_attr or pos_attr:
+            return f'<span{style_attr}{pos_attr}>{esc}</span>'
+        return esc
+
+    parts = []
+    prev_ln = all_line_nums[0] if all_line_nums else 0
+
+    for ln in all_line_nums:
+        if ln != prev_ln:
+            parts.append("<br>")
+            prev_ln = ln
+
+        if ln in comment_line_nums:
+            # Render comment line as plain grey text (no data-pos)
+            comment_text = "".join(lines_content.get(ln, []))
+            esc = comment_text.replace("&","&amp;").replace("<","&lt;").replace(">","&gt;")
+            parts.append(f'<span style="color:#999;font-style:italic">{esc.strip()}</span>')
+        else:
+            for w, ul, bold, cf, wt_idx in by_line.get(ln, []):
+                out_pos = input_to_output.get(wt_idx)
+                parts.append(make_span(w, ul, bold, cf, out_pos))
+
+    return "".join(parts)
 
 
 def convert(rtf_content, speed, increase_one_speed=False):

@@ -4,7 +4,7 @@
 import os
 
 from flask import Flask, request, jsonify, send_from_directory
-from convert_notes_to_thalam import convert, parse_rtf, strip_comment_lines
+from convert_notes_to_thalam import convert, parse_rtf, strip_comment_lines, build_preview_html
 
 app = Flask(__name__, static_folder=os.path.join(os.path.dirname(__file__), "static"))
 
@@ -17,69 +17,21 @@ def index():
 @app.route("/preview-rtf", methods=["POST"])
 def preview_rtf_endpoint():
     data = request.get_json(force=True)
-    rtf_content = data.get("rtf_content", "")
+    rtf_content      = data.get("rtf_content", "")
+    speed            = data.get("speed", 3)
+    increase_one_speed = data.get("increase_one_speed", False)
 
     if not rtf_content or not rtf_content.strip():
         return jsonify({"preview": ""}), 200
 
     try:
-        char_tuples, colortbl = parse_rtf(rtf_content)
-        # Do NOT strip comment lines here — show them in the preview as context.
+        speed = int(speed)
+    except (TypeError, ValueError):
+        speed = 3
 
-        # Build styled HTML from (char, ul, bold, cf, line_num) tuples.
-        # Line breaks come from line_num transitions (RTF \par), not literal \n chars.
-        # Use exactly 1 <br> per transition regardless of how many line_nums were skipped.
-        parts = []
-        i = 0
-        n = len(char_tuples)
-        prev_line_num = char_tuples[0][4] if char_tuples else 0
-
-        while i < n:
-            ch, ul, bold, cf, line_num = char_tuples[i]
-
-            # Insert exactly one line break per line transition
-            if line_num != prev_line_num:
-                parts.append("<br>")
-                prev_line_num = line_num
-
-            if ch == "\n":
-                parts.append("<br>")
-                i += 1
-                continue
-
-            # Collect a run with the same formatting and line_num
-            run_chars = []
-            run_ul, run_bold, run_cf = ul, bold, cf
-            while (i < n
-                   and char_tuples[i][1] == run_ul
-                   and char_tuples[i][2] == run_bold
-                   and char_tuples[i][3] == run_cf
-                   and char_tuples[i][0] != "\n"
-                   and char_tuples[i][4] == line_num):
-                c = char_tuples[i][0]
-                c = c.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-                run_chars.append(c)
-                i += 1
-            text = "".join(run_chars)
-            if not text:
-                continue
-
-            # Build inline style
-            styles = []
-            if run_bold:
-                styles.append("font-weight:bold")
-            if run_ul:
-                styles.append("text-decoration:underline")
-            # Resolve color from colortbl; cf=0 means default, None entry means default
-            if run_cf and run_cf < len(colortbl) and colortbl[run_cf]:
-                styles.append(f"color:{colortbl[run_cf]}")
-
-            if styles:
-                parts.append(f'<span style="{";".join(styles)}">{text}</span>')
-            else:
-                parts.append(text)
-
-        return jsonify({"preview": "".join(parts)})
+    try:
+        preview = build_preview_html(rtf_content, speed, increase_one_speed)
+        return jsonify({"preview": preview})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
