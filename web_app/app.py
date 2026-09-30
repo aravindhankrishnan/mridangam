@@ -23,23 +23,23 @@ def preview_rtf_endpoint():
         return jsonify({"preview": ""}), 200
 
     try:
-        char_tuples = parse_rtf(rtf_content)
+        char_tuples, colortbl = parse_rtf(rtf_content)
         # Do NOT strip comment lines here — show them in the preview as context.
 
-        # Build styled HTML from (char, ul, bold, line_num) tuples.
+        # Build styled HTML from (char, ul, bold, cf, line_num) tuples.
         # Line breaks come from line_num transitions (RTF \par), not literal \n chars.
+        # Use exactly 1 <br> per transition regardless of how many line_nums were skipped.
         parts = []
         i = 0
         n = len(char_tuples)
-        prev_line_num = char_tuples[0][3] if char_tuples else 0
+        prev_line_num = char_tuples[0][4] if char_tuples else 0
 
         while i < n:
-            ch, ul, bold, line_num = char_tuples[i]
+            ch, ul, bold, cf, line_num = char_tuples[i]
 
-            # Insert a line break whenever line_num advances
+            # Insert exactly one line break per line transition
             if line_num != prev_line_num:
-                for _ in range(line_num - prev_line_num):
-                    parts.append("<br>")
+                parts.append("<br>")
                 prev_line_num = line_num
 
             if ch == "\n":
@@ -49,12 +49,13 @@ def preview_rtf_endpoint():
 
             # Collect a run with the same formatting and line_num
             run_chars = []
-            run_ul, run_bold = ul, bold
+            run_ul, run_bold, run_cf = ul, bold, cf
             while (i < n
                    and char_tuples[i][1] == run_ul
                    and char_tuples[i][2] == run_bold
+                   and char_tuples[i][3] == run_cf
                    and char_tuples[i][0] != "\n"
-                   and char_tuples[i][3] == line_num):
+                   and char_tuples[i][4] == line_num):
                 c = char_tuples[i][0]
                 c = c.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
                 run_chars.append(c)
@@ -62,12 +63,19 @@ def preview_rtf_endpoint():
             text = "".join(run_chars)
             if not text:
                 continue
-            if run_bold and run_ul:
-                parts.append(f'<span style="font-weight:bold;text-decoration:underline">{text}</span>')
-            elif run_bold:
-                parts.append(f'<span style="font-weight:bold">{text}</span>')
-            elif run_ul:
-                parts.append(f'<span style="text-decoration:underline">{text}</span>')
+
+            # Build inline style
+            styles = []
+            if run_bold:
+                styles.append("font-weight:bold")
+            if run_ul:
+                styles.append("text-decoration:underline")
+            # Resolve color from colortbl; cf=0 means default, None entry means default
+            if run_cf and run_cf < len(colortbl) and colortbl[run_cf]:
+                styles.append(f"color:{colortbl[run_cf]}")
+
+            if styles:
+                parts.append(f'<span style="{";".join(styles)}">{text}</span>')
             else:
                 parts.append(text)
 

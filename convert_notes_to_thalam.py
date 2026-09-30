@@ -13,10 +13,32 @@ SKIP_DESTINATIONS = {
 
 
 def parse_rtf(content):
-    """Parse RTF and return list of (char, is_underlined, is_bold, line_num) tuples."""
+    """Parse RTF and return list of (char, is_underlined, is_bold, color_index, line_num) tuples.
+    color_index is a 0-based index into the colortbl (0 = default/black).
+    """
+    # ── Pass 1: extract colortbl ──────────────────────────────────────────────
+    # Format: {\colortbl;\red255\green255\blue255;\red0\green0\blue0;...}
+    # Entry 0 is implicit default (no \red\green\blue before first semicolon).
+    colortbl = ["#000000"]  # index 0 = default black
+    ctbl_match = re.search(r'\{\\colortbl([^}]*)\}', content)
+    if ctbl_match:
+        entries_str = ctbl_match.group(1)
+        # Split on semicolons; each entry is either empty (default) or \redN\greenN\blueN
+        entries = entries_str.split(";")
+        colortbl = []
+        for entry in entries:
+            r = re.search(r'\\red(\d+)', entry)
+            g = re.search(r'\\green(\d+)', entry)
+            b = re.search(r'\\blue(\d+)', entry)
+            if r and g and b:
+                colortbl.append(f"rgb({r.group(1)},{g.group(1)},{b.group(1)})")
+            else:
+                colortbl.append(None)  # empty entry = default color
+
+    # ── Pass 2: parse character stream ───────────────────────────────────────
     result = []
-    # Stack frames: {'ul': bool, 'bold': bool, 'ignore': bool}
-    stack = [{"ul": False, "bold": False, "ignore": False}]
+    # Stack frames: {'ul': bool, 'bold': bool, 'cf': int, 'ignore': bool}
+    stack = [{"ul": False, "bold": False, "cf": 0, "ignore": False}]
     line_num = 0
     i = 0
 
@@ -38,7 +60,7 @@ def parse_rtf(content):
 
             if next_ch in "\\{}":
                 if not stack[-1]["ignore"]:
-                    result.append((next_ch, stack[-1]["ul"], stack[-1]["bold"], line_num))
+                    result.append((next_ch, stack[-1]["ul"], stack[-1]["bold"], stack[-1]["cf"], line_num))
                 i += 1
             elif next_ch == "'":
                 # Hex-encoded character \'XX
@@ -47,28 +69,28 @@ def parse_rtf(content):
                     try:
                         char_code = int(content[i : i + 2], 16)
                         if not stack[-1]["ignore"]:
-                            result.append((chr(char_code), stack[-1]["ul"], stack[-1]["bold"], line_num))
+                            result.append((chr(char_code), stack[-1]["ul"], stack[-1]["bold"], stack[-1]["cf"], line_num))
                     except ValueError:
                         pass
                     i += 2
             elif next_ch == "-":
                 if not stack[-1]["ignore"]:
-                    result.append(("-", stack[-1]["ul"], stack[-1]["bold"], line_num))
+                    result.append(("-", stack[-1]["ul"], stack[-1]["bold"], stack[-1]["cf"], line_num))
                 i += 1
             elif next_ch == "_":
                 # Non-breaking hyphen
                 if not stack[-1]["ignore"]:
-                    result.append(("-", stack[-1]["ul"], stack[-1]["bold"], line_num))
+                    result.append(("-", stack[-1]["ul"], stack[-1]["bold"], stack[-1]["cf"], line_num))
                 i += 1
             elif next_ch == "~":
                 # Non-breaking space
                 if not stack[-1]["ignore"]:
-                    result.append((" ", stack[-1]["ul"], stack[-1]["bold"], line_num))
+                    result.append((" ", stack[-1]["ul"], stack[-1]["bold"], stack[-1]["cf"], line_num))
                 i += 1
             elif next_ch in "\r\n":
                 # \<newline> — line boundary in this RTF dialect
                 if not stack[-1]["ignore"]:
-                    result.append((" ", stack[-1]["ul"], stack[-1]["bold"], line_num))
+                    result.append((" ", stack[-1]["ul"], stack[-1]["bold"], stack[-1]["cf"], line_num))
                     line_num += 1
                 i += 1
             elif next_ch == "*":
@@ -108,28 +130,31 @@ def parse_rtf(content):
                         stack[-1]["ul"] = True
                     elif ctrl_word == "b":
                         stack[-1]["bold"] = num_str != "0"
+                    elif ctrl_word == "cf":
+                        stack[-1]["cf"] = int(num_str) if num_str else 0
                     elif ctrl_word == "plain":
                         stack[-1]["ul"] = False
                         stack[-1]["bold"] = False
+                        stack[-1]["cf"] = 0
                     elif ctrl_word == "par":
-                        result.append(("\n", stack[-1]["ul"], stack[-1]["bold"], line_num))
+                        result.append(("\n", stack[-1]["ul"], stack[-1]["bold"], stack[-1]["cf"], line_num))
                         line_num += 1
                     elif ctrl_word == "line":
-                        result.append(("\n", stack[-1]["ul"], stack[-1]["bold"], line_num))
+                        result.append(("\n", stack[-1]["ul"], stack[-1]["bold"], stack[-1]["cf"], line_num))
                     elif ctrl_word == "tab":
-                        result.append(("\t", stack[-1]["ul"], stack[-1]["bold"], line_num))
+                        result.append(("\t", stack[-1]["ul"], stack[-1]["bold"], stack[-1]["cf"], line_num))
             else:
                 i += 1
         elif ch in "\r\n":
             if not stack[-1]["ignore"]:
-                result.append((" ", stack[-1]["ul"], stack[-1]["bold"], line_num))
+                result.append((" ", stack[-1]["ul"], stack[-1]["bold"], stack[-1]["cf"], line_num))
             i += 1
         else:
             if not stack[-1]["ignore"]:
-                result.append((ch, stack[-1]["ul"], stack[-1]["bold"], line_num))
+                result.append((ch, stack[-1]["ul"], stack[-1]["bold"], stack[-1]["cf"], line_num))
             i += 1
 
-    return result
+    return result, colortbl
 
 
 def strip_comment_lines(char_tuples):
@@ -137,12 +162,12 @@ def strip_comment_lines(char_tuples):
     character is '#' (comment lines in the input file)."""
     lines = {}
     for t in char_tuples:
-        lines.setdefault(t[3], []).append(t[0])
+        lines.setdefault(t[4], []).append(t[0])  # line_num is now index 4
     comment_lines = {
         line_num for line_num, chars in lines.items()
         if "".join(chars).lstrip(" \t").startswith("#")
     }
-    return [t for t in char_tuples if t[3] not in comment_lines]
+    return [t for t in char_tuples if t[4] not in comment_lines]
 
 
 def load_notes(path):
@@ -202,9 +227,10 @@ def tokenize_with_notes(char_tuples, tokens, delete_hyphen):
 
 
 def char_triples_to_words(char_triples):
-    """Tokenize (char, ul, bold, line_num) tuples into (word, ul, bold, line_num) tuples.
+    """Tokenize (char, ul, bold, cf, line_num) tuples into (word, ul, bold, line_num) tuples.
     Delimiters: space, newline, tab, hyphen. Comma is its own token unless
-    immediately followed by a newline (end-of-line punctuation)."""
+    immediately followed by a newline (end-of-line punctuation).
+    cf (color index) is discarded — color is only used in the preview."""
     words = []
     current_chars = []
     current_ul = False
@@ -213,7 +239,7 @@ def char_triples_to_words(char_triples):
     n = len(char_triples)
 
     for idx in range(n):
-        char, ul, bold, line_num = char_triples[idx]
+        char, ul, bold, cf, line_num = char_triples[idx]
         if char in " \n\t\r\xa0":
             if current_chars:
                 words.append(("".join(current_chars), current_ul, current_bold, current_line))
@@ -371,7 +397,7 @@ def convert(rtf_content, speed, increase_one_speed=False):
     mathras_per_beat = 2 ** (speed - 1)
     n = mathras_per_beat * 4  # 4 beats per line
 
-    char_tuples = parse_rtf(rtf_content)
+    char_tuples, _colortbl = parse_rtf(rtf_content)
     char_tuples = strip_comment_lines(char_tuples)
     word_tuples = char_triples_to_words(char_tuples)
 
@@ -409,7 +435,7 @@ def main():
             content = f.read()
 
     if args.konnakol.lower().endswith(".rtf"):
-        char_tuples = parse_rtf(content)
+        char_tuples, _colortbl = parse_rtf(content)
         char_tuples = strip_comment_lines(char_tuples)
         word_tuples = char_triples_to_words(char_tuples)
     else:
