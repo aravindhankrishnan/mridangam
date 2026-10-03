@@ -337,10 +337,10 @@ def build_html_string(words, n, mathras_per_beat):
 
     header_cells = ""
     header_cells += "    <th></th>\n"  # count column (left)
-    header_cells += "    <th></th>\n"  # marker column (left)
     for i in range(1, n + 1):
         style = "border-right: 3px solid #555" if i % mathras_per_beat == 0 else ""
         header_cells += f'    <th style="{style}">{i}</th>\n'
+    header_cells += "    <th></th>\n"  # marker column (right)
     html_rows = [
         f"  <tr>\n{header_cells}  </tr>",
         f'  <tr><td colspan="{total_cols}" style="border:none; height:8px"></td></tr>',
@@ -353,11 +353,18 @@ def build_html_string(words, n, mathras_per_beat):
         marker = "||" if row_num % 2 == 0 else "|"
         cells = ""
         if marker == "|":
-            double_bar_count += 1
-            cells += f'    <td style="font-size:1.4em; font-weight:bold; border:none">{double_bar_count}</td>\n'
+            cells += f'    <td style="font-size:1.4em; font-weight:bold; border:none">{double_bar_count + 1}</td>\n'
         else:
             cells += f'    <td style="border:none"></td>\n'
+        for col_idx, (w, line_num) in enumerate(padded_row):
+            style = f"background:{LINE_COLORS[line_num % 2]}"
+            if (col_idx + 1) % mathras_per_beat == 0:
+                style += "; border-right: 3px solid #555"
+            cells += f'    <td style="{style}" data-pos="{pos}">{w}</td>\n'
+            pos += 1
         cells += f'    <td style="color:red; font-weight:bold">{marker}</td>\n'
+        if marker == "||":
+            double_bar_count += 1
         for col_idx, (w, line_num) in enumerate(padded_row):
             style = f"background:{LINE_COLORS[line_num % 2]}"
             if (col_idx + 1) % mathras_per_beat == 0:
