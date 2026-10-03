@@ -365,12 +365,6 @@ def build_html_string(words, n, mathras_per_beat):
         cells += f'    <td style="color:red; font-weight:bold">{marker}</td>\n'
         if marker == "||":
             double_bar_count += 1
-        for col_idx, (w, line_num) in enumerate(padded_row):
-            style = f"background:{LINE_COLORS[line_num % 2]}"
-            if (col_idx + 1) % mathras_per_beat == 0:
-                style += "; border-right: 3px solid #555"
-            cells += f'    <td style="{style}" data-pos="{pos}">{w}</td>\n'
-            pos += 1
         html_rows.append(f"  <tr>\n{cells}  </tr>")
         if marker == "||":
             html_rows.append(f'  <tr><td colspan="{total_cols + 1}" style="border:none; height:8px"></td></tr>')
