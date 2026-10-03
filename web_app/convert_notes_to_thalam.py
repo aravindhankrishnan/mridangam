@@ -253,7 +253,7 @@ def char_triples_to_words(char_triples):
                 words.append(("".join(current_chars), current_ul, current_bold, current_line))
                 current_chars = []
             next_char = char_triples[idx + 1][0] if idx + 1 < n else ""
-            if next_char not in "\n\r":
+            if next_char not in ("\n", "\r"):
                 words.append((",", ul, bold, line_num))
         else:
             if current_chars and (ul != current_ul or bold != current_bold):
@@ -505,7 +505,7 @@ def build_preview_html(rtf_content, speed, increase_one_speed=False):
                 colored_words.append(("".join(current_chars), current_ul, current_bold, current_cf, current_line))
                 current_chars = []
             next_char = sc[idx + 1][0] if idx + 1 < n_sc else ""
-            if next_char not in "\n\r":
+            if next_char not in ("\n", "\r"):
                 colored_words.append((",", ul, bold, cf, line_num))
         else:
             if current_chars and (ul != current_ul or bold != current_bold or cf != current_cf):
